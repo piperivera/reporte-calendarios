@@ -22715,10 +22715,15 @@ input[type=date]:focus{border-color:var(--accent2)}
 const MSAL_CONFIG={auth:{clientId:"77f7d7e8-b801-49a0-94f0-4d8d28af3ce9",authority:"https://login.microsoftonline.com/e6805558-f5bb-444c-8af2-5f3a4d6dd3fc",redirectUri:window.location.href.split("?")[0].split("#")[0]},cache:{cacheLocation:"sessionStorage"}};
 const SCOPES=["User.ReadBasic.All","Calendars.Read"];
 let msalInst;
+let users=[];
+let sel=new Set();
+let acct=null;
 async function initApp(){
   msalInst=new msal.PublicClientApplication(MSAL_CONFIG);
-let users=[],sel=new Set(),acct=null;
-(async()=>{
+  users=[];
+  sel=new Set();
+  acct=null;
+  (async()=>{
   await msalInst.initialize();
   const r=await msalInst.handleRedirectPromise();
   if(r)acct=r.account;
@@ -22820,7 +22825,6 @@ async function generar(){
   }catch(e){const a=document.getElementById("al2");a.textContent="Error: "+e.message;a.classList.add("show");lg("<span class='er'>"+e.message+"</span>");}
   btn.classList.remove("loading");btn.disabled=false;
 }
-});
 async function makeWord(personas,fecha){
   const{Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign}=window.docx;
   const az="1F4E79",am="2E75B6",gr="F2F2F2";
