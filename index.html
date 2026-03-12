@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reporte de Calendarios</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <script>(function(global2, factory) {
   typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.docx = {}));
 })(this, (function(exports2) {
@@ -22714,7 +22714,9 @@ input[type=date]:focus{border-color:var(--accent2)}
 <script>
 const MSAL_CONFIG={auth:{clientId:"77f7d7e8-b801-49a0-94f0-4d8d28af3ce9",authority:"https://login.microsoftonline.com/e6805558-f5bb-444c-8af2-5f3a4d6dd3fc",redirectUri:window.location.href.split("?")[0].split("#")[0]},cache:{cacheLocation:"sessionStorage"}};
 const SCOPES=["User.ReadBasic.All","Calendars.Read"];
-const msalInst=new msal.PublicClientApplication(MSAL_CONFIG);
+let msalInst;
+async function initApp(){
+  msalInst=new msal.PublicClientApplication(MSAL_CONFIG);
 let users=[],sel=new Set(),acct=null;
 (async()=>{
   await msalInst.initialize();
@@ -22723,6 +22725,7 @@ let users=[],sel=new Set(),acct=null;
   else{const a=msalInst.getAllAccounts();if(a.length)acct=a[0];}
   if(acct)showApp();
 })();
+}
 async function login(){
   const b=document.getElementById("btnLogin");
   b.classList.add("loading");b.disabled=true;
@@ -22817,6 +22820,7 @@ async function generar(){
   }catch(e){const a=document.getElementById("al2");a.textContent="Error: "+e.message;a.classList.add("show");lg("<span class='er'>"+e.message+"</span>");}
   btn.classList.remove("loading");btn.disabled=false;
 }
+});
 async function makeWord(personas,fecha){
   const{Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign}=window.docx;
   const az="1F4E79",am="2E75B6",gr="F2F2F2";
@@ -22861,5 +22865,7 @@ async function makeWord(personas,fecha){
   return Packer.toBlob(doc);
 }
 </script>
+
+<script>window.addEventListener("load", initApp);</script>
 </body>
 </html>
