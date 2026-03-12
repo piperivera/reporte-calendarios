@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="vendor/msal-browser.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reporte de Calendarios</title>
@@ -22729,13 +22729,18 @@ function loadScript(src){
 }
 async function ensureMsal(){
   if(window.msal&&window.msal.PublicClientApplication)return;
-  try{
-    await loadScript("https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js");
-  }catch{
-    await loadScript("https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/dist/msal-browser.min.js");
+  const urls=[
+    "vendor/msal-browser.min.js",
+    "https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js",
+    "https://alcdn.msftauth.net/browser/2.35.0/js/msal-browser.min.js"
+  ];
+  let lastErr=null;
+  for(const u of urls){
+    try{await loadScript(u);lastErr=null;break;}
+    catch(e){lastErr=e;}
   }
   if(!window.msal||!window.msal.PublicClientApplication){
-    throw new Error("MSAL no disponible. Verifica conexion o bloqueo de CDN.");
+    throw new Error((lastErr&&lastErr.message?lastErr.message:"MSAL no disponible")+". Verifica conexion o bloqueo de CDN.");
   }
 }
 async function initApp(){
@@ -22759,6 +22764,12 @@ async function initApp(){
 })();
 }
 async function login(){
+  if(!msalInst){
+    const a=document.getElementById("alLogin");
+    a.textContent="MSAL no cargado. Revisa conexion o bloqueos.";
+    a.classList.add("show");
+    return;
+  }
   const b=document.getElementById("btnLogin");
   b.classList.add("loading");b.disabled=true;
   try{await msalInst.loginRedirect({scopes:SCOPES});}
