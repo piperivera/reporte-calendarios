@@ -22677,21 +22677,21 @@ input[type=date]:focus{border-color:var(--accent2)}
   </div>
   <div id="appSec" style="display:none">
     <div class="steps">
-      <div class="step active" id="st1"><div class="sn" id="sn1">1</div>Seleccionar personas</div>
+      <div class="step active" id="st1"><div class="sn" id="sn1">1</div>Seleccionar calendarios</div>
       <div class="step" id="st2"><div class="sn" id="sn2">2</div>Generar reporte</div>
     </div>
     <div class="card" id="c1">
-      <h2>Seleccionar personas</h2>
-      <p class="sub">Elige los calendarios a incluir y la fecha del reporte.</p>
+      <h2>Seleccionar calendarios</h2>
+      <p class="sub">Elige los calendarios disponibles en tu cuenta y la fecha del reporte.</p>
       <div class="field"><label>Fecha del reporte</label><input type="date" id="fDate"></div>
       <hr class="divider">
-      <p class="slbl">Personas en tu organizacion</p>
+      <p class="slbl">Calendarios disponibles</p>
       <div class="srow">
         <button class="btn bghost bsm" onclick="selAll(true)">Todos</button>
         <button class="btn bghost bsm" onclick="selAll(false)">Ninguno</button>
-        <span class="scnt" id="scnt">Cargando...</span>
+        <span class="scnt" id="scnt">Cargando calendarios...</span>
       </div>
-      <div class="ugrid" id="ugrid"><div style="color:var(--muted);font-size:.84rem;padding:16px 0">Cargando usuarios...</div></div>
+      <div class="ugrid" id="ugrid"><div style="color:var(--muted);font-size:.84rem;padding:16px 0">Cargando calendarios...</div></div>
       <div class="al al-e" id="al1"></div>
       <div class="brow"><button class="btn bacc" onclick="goStep(2)">Continuar &rarr;</button></div>
     </div>
@@ -22713,9 +22713,9 @@ input[type=date]:focus{border-color:var(--accent2)}
 </div>
 <script>
 const MSAL_CONFIG={auth:{clientId:"77f7d7e8-b801-49a0-94f0-4d8d28af3ce9",authority:"https://login.microsoftonline.com/e6805558-f5bb-444c-8af2-5f3a4d6dd3fc",redirectUri:window.location.href.split("?")[0].split("#")[0]},cache:{cacheLocation:"sessionStorage"}};
-const SCOPES = ["User.ReadBasic.All", "Calendars.Read", "Calendars.Read.Shared"];
+const SCOPES = ["Calendars.Read", "Calendars.Read.Shared"];
 let msalInst;
-let users=[];
+let calendars=[];
 let sel=new Set();
 let acct=null;
 function loadScript(src){
@@ -22752,7 +22752,7 @@ async function initApp(){
     return;
   }
   msalInst=new msal.PublicClientApplication(MSAL_CONFIG);
-  users=[];
+  calendars=[];
   sel=new Set();
   acct=null;
   (async()=>{
@@ -22793,24 +22793,32 @@ async function showApp(){
   document.getElementById("blogout").style.display="block";
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   try{
-    const d=await graph("/users?$select=id,displayName,mail&$top=999");
+    const d=await graph("/me/calendars?$select=id,name,owner&$top=200");
     if(d.error)throw new Error(d.error.message);
-    users=(d.value||[]).filter(u=>u.mail);
+    calendars=(d.value||[]).filter(c=>c.id).map(c=>{
+      const owner=c.owner||{};
+      const ownerName=owner.name||acct.name||"Sin nombre";
+      const ownerMail=owner.address||"";
+      const calName=c.name||"";
+      const label=calName?ownerName+" · "+calName:ownerName;
+      return {id:c.id,nombre:ownerName,mail:ownerMail,calName,label};
+    });
     const g=document.getElementById("ugrid");g.innerHTML="";
-    users.forEach(u=>{
-      const ini=u.displayName.split(" ").map(p=>p[0]||"").join("").substring(0,2).toUpperCase();
-      const dv=document.createElement("div");dv.className="uc";dv.dataset.id=u.id;
-      dv.innerHTML="<div class='av'>"+ini+"</div><div style='flex:1;min-width:0'><div class='un'>"+u.displayName+"</div><div class='um'>"+u.mail+"</div></div><div class='uchk'>&#x2713;</div>";
-      dv.onclick=()=>{if(sel.has(u.id)){sel.delete(u.id);dv.classList.remove("sel");}else{sel.add(u.id);dv.classList.add("sel");}document.getElementById("scnt").textContent=sel.size+" seleccionados";};
+    calendars.forEach(c=>{
+      const ini=c.nombre.split(" ").map(p=>p[0]||"").join("").substring(0,2).toUpperCase();
+      const dv=document.createElement("div");dv.className="uc";dv.dataset.id=c.id;
+      const sub=(c.calName?c.calName+" · ":"")+(c.mail||"");
+      dv.innerHTML="<div class='av'>"+ini+"</div><div style='flex:1;min-width:0'><div class='un'>"+c.nombre+"</div><div class='um'>"+sub+"</div></div><div class='uchk'>&#x2713;</div>";
+      dv.onclick=()=>{if(sel.has(c.id)){sel.delete(c.id);dv.classList.remove("sel");}else{sel.add(c.id);dv.classList.add("sel");}document.getElementById("scnt").textContent=sel.size+" calendario(s) seleccionados";};
       g.appendChild(dv);
     });
     selAll(true);
   }catch(e){const a=document.getElementById("al1");a.textContent="Error: "+e.message;a.classList.add("show");}
 }
 function selAll(t){
-  sel=t?new Set(users.map(u=>u.id)):new Set();
+  sel=t?new Set(calendars.map(c=>c.id)):new Set();
   document.querySelectorAll(".uc").forEach(el=>el.classList.toggle("sel",t));
-  document.getElementById("scnt").textContent=sel.size+" seleccionados";
+  document.getElementById("scnt").textContent=sel.size+" calendario(s) seleccionados";
 }
 function goStep(n){
   [1,2].forEach(i=>{
@@ -22821,7 +22829,7 @@ function goStep(n){
   if(n===2){
     const f=document.getElementById("fDate").value;
     const d=new Date(f+"T12:00:00");
-    document.getElementById("resumen").textContent=sel.size+" persona(s) - "+d.toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    document.getElementById("resumen").textContent=sel.size+" calendario(s) - "+d.toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
     document.getElementById("logBox").innerHTML="<span class='dm'>Presiona el boton para generar...</span>";
     document.getElementById("al2").classList.remove("show");document.getElementById("al2ok").classList.remove("show");
   }
@@ -22829,28 +22837,48 @@ function goStep(n){
 function lg(m,c=""){const b=document.getElementById("logBox");b.innerHTML+="<div class='"+c+"'>"+m+"</div>";b.scrollTop=b.scrollHeight;}
 function setP(p){document.getElementById("pb").style.width=p+"%";}
 function fmt(s){if(!s)return"--";return new Date(s).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",hour12:true});}
-function libres(evs,h0=8,h1=18){
-  const oc=evs.filter(e=>!e.isAllDay&&e.start?.dateTime).map(e=>({ini:new Date(e.start.dateTime).getHours()*60+new Date(e.start.dateTime).getMinutes(),fin:new Date(e.end.dateTime).getHours()*60+new Date(e.end.dateTime).getMinutes()})).sort((a,b)=>a.ini-b.ini);
-  const lib=[];let cur=h0*60;
+function libres(evs,h0=8,h1=17){
+  const start=h0*60,end=h1*60;
+  const oc=evs.filter(e=>e.start?.dateTime).map(e=>({
+    ini:new Date(e.start.dateTime).getHours()*60+new Date(e.start.dateTime).getMinutes(),
+    fin:new Date(e.end.dateTime).getHours()*60+new Date(e.end.dateTime).getMinutes(),
+    allDay:!!e.isAllDay
+  })).filter(b=>b.allDay||(b.fin>start&&b.ini<end)).map(b=>{
+    if(b.allDay)return {ini:start,fin:end};
+    return {ini:Math.max(b.ini,start),fin:Math.min(b.fin,end)};
+  });
+  const lunchIni=12*60,lunchFin=14*60;
+  if(lunchIni<end&&lunchFin>start){
+    oc.push({ini:Math.max(lunchIni,start),fin:Math.min(lunchFin,end)});
+  }
+  oc.sort((a,b)=>a.ini-b.ini);
+  const lib=[];let cur=start;
   for(const b of oc){if(b.ini>cur)lib.push({ini:cur,fin:b.ini});cur=Math.max(cur,b.fin);}
-  if(cur<h1*60)lib.push({ini:cur,fin:h1*60});
+  if(cur<end)lib.push({ini:cur,fin:end});
   return lib.map(l=>{const f=m=>{const h=Math.floor(m/60),mi=m%60,ap=h>=12?"PM":"AM";return(h>12?h-12:h===0?12:h)+":"+String(mi).padStart(2,"0")+" "+ap;};return f(l.ini)+" - "+f(l.fin);});
 }
 async function generar(){
   const btn=document.getElementById("btnGen");
   document.getElementById("al2").classList.remove("show");document.getElementById("al2ok").classList.remove("show");
-  if(!sel.size){document.getElementById("al2").textContent="Selecciona al menos una persona.";document.getElementById("al2").classList.add("show");return;}
+  if(!sel.size){document.getElementById("al2").textContent="Selecciona al menos un calendario.";document.getElementById("al2").classList.add("show");return;}
   const fs=document.getElementById("fDate").value;
   if(!fs){document.getElementById("al2").textContent="Selecciona una fecha.";document.getElementById("al2").classList.add("show");return;}
   btn.classList.add("loading");btn.disabled=true;
   document.getElementById("pw").style.display="block";document.getElementById("logBox").innerHTML="";setP(0);
   const ini=new Date(fs+"T00:00:00").toISOString(),fin=new Date(fs+"T23:59:59").toISOString();
-  const sl=users.filter(u=>sel.has(u.id));const res=[];
-  lg("<span class='inf'>Fecha: "+fs+" - "+sl.length+" persona(s)</span>");
+  const sl=calendars.filter(c=>sel.has(c.id));const res=[];
+  lg("<span class='inf'>Fecha: "+fs+" - "+sl.length+" calendario(s)</span>");
   for(let i=0;i<sl.length;i++){
-    const u=sl[i];lg("<span class='dm'>  -> "+u.displayName+"...</span>");
-    try{const d=await graph("/users/"+u.id+"/calendarView?startDateTime="+ini+"&endDateTime="+fin+"&$select=subject,start,end,location,isAllDay&$top=50&$orderby=start/dateTime");const evs=d.value||[];lg("<span class='ok'>  ok "+u.displayName+" - "+evs.length+" evento(s)</span>");res.push({nombre:u.displayName,mail:u.mail,eventos:evs});}
-    catch(e){lg("<span class='er'>  x "+u.displayName+"</span>");res.push({nombre:u.displayName,mail:u.mail,eventos:[]});}
+    const c=sl[i];lg("<span class='dm'>  -> "+c.label+"...</span>");
+    try{
+      const d=await graph("/me/calendars/"+c.id+"/calendarView?startDateTime="+ini+"&endDateTime="+fin+"&$select=subject,start,end,location,isAllDay&$top=200&$orderby=start/dateTime");
+      const evs=d.value||[];
+      lg("<span class='ok'>  ok "+c.label+" - "+evs.length+" evento(s)</span>");
+      res.push({nombre:c.label,mail:c.mail,eventos:evs,error:false});
+    }catch(e){
+      lg("<span class='er'>  x "+c.label+" (sin permisos)</span>");
+      res.push({nombre:c.label,mail:c.mail,eventos:[],error:true,errorMsg:e.message});
+    }
     setP(Math.round((i+1)/sl.length*80));
   }
   lg("<span class='inf'>Generando Word...</span>");setP(90);
@@ -22875,10 +22903,15 @@ async function makeWord(personas,fecha){
   ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:360},children:[new TextRun({text:"Generado: "+new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"}),size:18,color:"888888",font:"Arial",italics:true})]}));
   ch.push(new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:6,color:am,space:1}},spacing:{before:0,after:360},children:[]}));
   let tot=0;
-  personas.forEach(({nombre,mail,eventos},idx)=>{
-    const lib=libres(eventos);const lt=lib.length>0?lib.join("  |  "):"Sin horas libres (8 AM - 6 PM)";tot+=eventos.length;
+  personas.forEach(({nombre,mail,eventos,error},idx)=>{
+    if(!error){tot+=eventos.length;}
     ch.push(new Paragraph({spacing:{before:idx===0?0:440,after:80},children:[new TextRun({text:nombre,bold:true,size:26,color:az,font:"Arial"})]}));
     if(mail)ch.push(new Paragraph({spacing:{before:0,after:80},children:[new TextRun({text:mail,size:17,color:"888888",italics:true,font:"Arial"})]}));
+    if(error){
+      ch.push(new Paragraph({spacing:{before:0,after:200},children:[new TextRun({text:"Sin permisos o no compartido con tu usuario.",size:18,color:"C0392B",italics:true,font:"Arial"})]}));
+      return;
+    }
+    const lib=libres(eventos);const lt=lib.length>0?lib.join("  |  "):"Sin horas libres (8 AM - 5 PM, almuerzo 12-2)";
     ch.push(new Paragraph({spacing:{before:0,after:180},children:[new TextRun({text:"Horas libres: ",bold:true,size:19,color:"2E7D32",font:"Arial"}),new TextRun({text:lt,size:19,color:"2E7D32",font:"Arial"})]}));
     if(!eventos.length){ch.push(new Paragraph({spacing:{before:0,after:200},children:[new TextRun({text:"Sin eventos para este dia.",size:18,color:"999999",italics:true,font:"Arial"})]}));return;}
     const COL=[3600,1400,1400,2960];
@@ -22898,10 +22931,10 @@ async function makeWord(personas,fecha){
   const C2=[4680,4680];
   ch.push(new Table({width:{size:9360,type:WidthType.DXA},columnWidths:C2,rows:[
     new TableRow({children:[hdr("Metrica",C2[0]),hdr("Valor",C2[1])]}),
-    new TableRow({children:[cel("Total personas",C2[0],gr,true),cel(String(personas.length),C2[1],gr,false,AlignmentType.CENTER)]}),
+    new TableRow({children:[cel("Total calendarios",C2[0],gr,true),cel(String(personas.length),C2[1],gr,false,AlignmentType.CENTER)]}),
     new TableRow({children:[cel("Total eventos",C2[0],"FFFFFF",true),cel(String(tot),C2[1],"FFFFFF",false,AlignmentType.CENTER)]}),
-    new TableRow({children:[cel("Con eventos",C2[0],gr,true),cel(String(personas.filter(p=>p.eventos.length>0).length),C2[1],gr,false,AlignmentType.CENTER)]}),
-    new TableRow({children:[cel("Libres todo el dia",C2[0],"FFFFFF",true),cel(String(personas.filter(p=>p.eventos.length===0).length),C2[1],"FFFFFF",false,AlignmentType.CENTER)]}),
+    new TableRow({children:[cel("Con eventos",C2[0],gr,true),cel(String(personas.filter(p=>!p.error&&p.eventos.length>0).length),C2[1],gr,false,AlignmentType.CENTER)]}),
+    new TableRow({children:[cel("Libres todo el dia",C2[0],"FFFFFF",true),cel(String(personas.filter(p=>!p.error&&p.eventos.length===0).length),C2[1],"FFFFFF",false,AlignmentType.CENTER)]}),
   ]}));
   const doc=new Document({styles:{default:{document:{run:{font:"Arial",size:20}}}},sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},children:ch}]});
   return Packer.toBlob(doc);
