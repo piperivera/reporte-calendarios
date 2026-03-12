@@ -22714,10 +22714,28 @@ input[type=date]:focus{border-color:var(--accent2)}
 <script>
 const MSAL_CONFIG={auth:{clientId:"77f7d7e8-b801-49a0-94f0-4d8d28af3ce9",authority:"https://login.microsoftonline.com/e6805558-f5bb-444c-8af2-5f3a4d6dd3fc",redirectUri:window.location.href.split("?")[0].split("#")[0]},cache:{cacheLocation:"sessionStorage"}};
 const SCOPES = ["Calendars.Read", "Calendars.Read.Shared"];
+const TZ = "America/Bogota";
+const TZ_OFFSET = "-05:00";
+const TZ_DTF = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour12: false, hour: "2-digit", minute: "2-digit" });
+const CALENDAR_EXCLUDE_RE = /(cumplea|birthday|festiv|holiday|feriado|festivo|holidays)/i;
 let msalInst;
 let calendars=[];
 let sel=new Set();
 let acct=null;
+function isNoiseCalendar(name){
+  return CALENDAR_EXCLUDE_RE.test((name||"").trim());
+}
+function toBogotaDate(dt){
+  if(!dt)return null;
+  if(/[zZ]$/.test(dt) || /[+-]\d{2}:\d{2}$/.test(dt))return new Date(dt);
+  return new Date(dt+TZ_OFFSET);
+}
+function minutesInBogota(d){
+  const parts=TZ_DTF.formatToParts(d);
+  const h=parseInt(parts.find(p=>p.type==="hour").value,10);
+  const m=parseInt(parts.find(p=>p.type==="minute").value,10);
+  return h*60+m;
+}
 function loadScript(src){
   return new Promise((resolve,reject)=>{
     const s=document.createElement("script");
@@ -22782,7 +22800,7 @@ async function getToken(){
 }
 async function graph(path){
   const t=await getToken();
-  const r=await fetch("https://graph.microsoft.com/v1.0"+path,{headers:{Authorization:"Bearer "+t}});
+  const r=await fetch("https://graph.microsoft.com/v1.0"+path,{headers:{Authorization:"Bearer "+t,Prefer:'outlook.timezone="'+TZ+'"'}});
   return r.json();
 }
 async function showApp(){
@@ -22791,11 +22809,11 @@ async function showApp(){
   document.getElementById("upill").textContent="Sesion: "+(acct.name||acct.username);
   document.getElementById("upill").style.display="block";
   document.getElementById("blogout").style.display="block";
-  document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
+  document.getElementById("fDate").value=new Date().toLocaleDateString("en-CA",{timeZone:TZ});
   try{
     const d=await graph("/me/calendars?$select=id,name,owner&$top=200");
     if(d.error)throw new Error(d.error.message);
-    calendars=(d.value||[]).filter(c=>c.id).map(c=>{
+    calendars=(d.value||[]).filter(c=>c.id && !isNoiseCalendar(c.name||"")).map(c=>{
       const owner=c.owner||{};
       const ownerName=owner.name||acct.name||"Sin nombre";
       const ownerMail=owner.address||"";
@@ -22828,22 +22846,30 @@ function goStep(n){
   });
   if(n===2){
     const f=document.getElementById("fDate").value;
-    const d=new Date(f+"T12:00:00");
-    document.getElementById("resumen").textContent=sel.size+" calendario(s) - "+d.toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    const d=new Date(f+"T12:00:00"+TZ_OFFSET);
+    document.getElementById("resumen").textContent=sel.size+" calendario(s) - "+d.toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:TZ});
     document.getElementById("logBox").innerHTML="<span class='dm'>Presiona el boton para generar...</span>";
     document.getElementById("al2").classList.remove("show");document.getElementById("al2ok").classList.remove("show");
   }
 }
 function lg(m,c=""){const b=document.getElementById("logBox");b.innerHTML+="<div class='"+c+"'>"+m+"</div>";b.scrollTop=b.scrollHeight;}
 function setP(p){document.getElementById("pb").style.width=p+"%";}
-function fmt(s){if(!s)return"--";return new Date(s).toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",hour12:true});}
+function fmt(s){
+  const d=toBogotaDate(s);
+  if(!d)return"--";
+  return d.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:TZ});
+}
 function libres(evs,h0=8,h1=17){
   const start=h0*60,end=h1*60;
-  const oc=evs.filter(e=>e.start?.dateTime).map(e=>({
-    ini:new Date(e.start.dateTime).getHours()*60+new Date(e.start.dateTime).getMinutes(),
-    fin:new Date(e.end.dateTime).getHours()*60+new Date(e.end.dateTime).getMinutes(),
+  const oc=evs.filter(e=>e.start?.dateTime).map(e=>{
+    const ds=toBogotaDate(e.start.dateTime);
+    const de=toBogotaDate(e.end.dateTime);
+    if(!ds||!de)return null;
+    return {
+    ini:minutesInBogota(ds),
+    fin:minutesInBogota(de),
     allDay:!!e.isAllDay
-  })).filter(b=>b.allDay||(b.fin>start&&b.ini<end)).map(b=>{
+  };}).filter(Boolean).filter(b=>b.allDay||(b.fin>start&&b.ini<end)).map(b=>{
     if(b.allDay)return {ini:start,fin:end};
     return {ini:Math.max(b.ini,start),fin:Math.min(b.fin,end)};
   });
@@ -22865,7 +22891,7 @@ async function generar(){
   if(!fs){document.getElementById("al2").textContent="Selecciona una fecha.";document.getElementById("al2").classList.add("show");return;}
   btn.classList.add("loading");btn.disabled=true;
   document.getElementById("pw").style.display="block";document.getElementById("logBox").innerHTML="";setP(0);
-  const ini=new Date(fs+"T00:00:00").toISOString(),fin=new Date(fs+"T23:59:59").toISOString();
+  const ini=new Date(fs+"T00:00:00"+TZ_OFFSET).toISOString(),fin=new Date(fs+"T23:59:59"+TZ_OFFSET).toISOString();
   const sl=calendars.filter(c=>sel.has(c.id));const res=[];
   lg("<span class='inf'>Fecha: "+fs+" - "+sl.length+" calendario(s)</span>");
   for(let i=0;i<sl.length;i++){
@@ -22883,7 +22909,7 @@ async function generar(){
   }
   lg("<span class='inf'>Generando Word...</span>");setP(90);
   try{
-    const blob=await makeWord(res,new Date(fs+"T12:00:00"));
+    const blob=await makeWord(res,new Date(fs+"T12:00:00"+TZ_OFFSET));
     const url=URL.createObjectURL(blob);const a=document.createElement("a");
     a.href=url;a.download="reporte_calendarios_"+fs+".docx";a.click();URL.revokeObjectURL(url);
     setP(100);lg("<span class='ok'>Descargado correctamente!</span>");
@@ -22897,10 +22923,10 @@ async function makeWord(personas,fecha){
   const b1={style:BorderStyle.SINGLE,size:1,color:"CCCCCC"};const brd={top:b1,bottom:b1,left:b1,right:b1};
   const hdr=(t,w)=>new TableCell({borders:brd,width:{size:w,type:WidthType.DXA},shading:{fill:am,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},verticalAlign:VerticalAlign.CENTER,children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:t,bold:true,color:"FFFFFF",size:20,font:"Arial"})]})]});
   const cel=(t,w,fill="FFFFFF",bold=false,align=AlignmentType.LEFT)=>new TableCell({borders:brd,width:{size:w,type:WidthType.DXA},shading:{fill,type:ShadingType.CLEAR},margins:{top:60,bottom:60,left:120,right:120},verticalAlign:VerticalAlign.CENTER,children:[new Paragraph({alignment:align,children:[new TextRun({text:t||"--",bold,size:18,font:"Arial"})]})]});
-  const ch=[];const tf=fecha.toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  const ch=[];const tf=fecha.toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:TZ});
   ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:140},children:[new TextRun({text:"Reporte de Calendarios",bold:true,size:36,color:az,font:"Arial"})]}));
   ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:80},children:[new TextRun({text:tf.charAt(0).toUpperCase()+tf.slice(1),size:22,color:"555555",font:"Arial"})]}));
-  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:360},children:[new TextRun({text:"Generado: "+new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"}),size:18,color:"888888",font:"Arial",italics:true})]}));
+  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:360},children:[new TextRun({text:"Generado: "+new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric",timeZone:TZ}),size:18,color:"888888",font:"Arial",italics:true})]}));
   ch.push(new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:6,color:am,space:1}},spacing:{before:0,after:360},children:[]}));
   let tot=0;
   personas.forEach(({nombre,mail,eventos,error},idx)=>{
