@@ -22713,7 +22713,7 @@ input[type=date]:focus{border-color:var(--accent2)}
 </div>
 <script>
 const MSAL_CONFIG={auth:{clientId:"77f7d7e8-b801-49a0-94f0-4d8d28af3ce9",authority:"https://login.microsoftonline.com/e6805558-f5bb-444c-8af2-5f3a4d6dd3fc",redirectUri:window.location.href.split("?")[0].split("#")[0]},cache:{cacheLocation:"sessionStorage"}};
-const SCOPES=["User.ReadBasic.All","Calendars.Read"];
+const SCOPES = ["User.ReadBasic.All", "Calendars.Read", "Calendars.Read.Shared"];
 let msalInst;
 let users=[];
 let sel=new Set();
