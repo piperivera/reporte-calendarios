@@ -22725,6 +22725,21 @@ let acct=null;
 function isNoiseCalendar(name){
   return CALENDAR_EXCLUDE_RE.test((name||"").trim());
 }
+function calendarKey(c){
+  return [c.id||"",((c.owner&&c.owner.address)||"").toLowerCase(),(c.name||"").toLowerCase()].join("|");
+}
+function normalizeCalendar(c,source){
+  const owner=c.owner||{};
+  const ownerName=owner.name||acct.name||"Sin nombre";
+  const ownerMail=owner.address||"";
+  const calName=c.name||"";
+  const label=calName&&calName!==ownerName?ownerName+" - "+calName:ownerName;
+  return {id:c.id,nombre:ownerName,mail:ownerMail,calName,label,source,isDefault:!!c.isDefaultCalendar};
+}
+function sortCalendars(a,b){
+  if(a.isDefault!==b.isDefault)return a.isDefault?-1:1;
+  return (a.label||"").localeCompare(b.label||"","es",{sensitivity:"base"});
+}
 function toBogotaDate(dt){
   if(!dt)return null;
   if(/[zZ]$/.test(dt) || /[+-]\d{2}:\d{2}$/.test(dt))return new Date(dt);
@@ -22800,8 +22815,43 @@ async function getToken(){
 }
 async function graph(path){
   const t=await getToken();
-  const r=await fetch("https://graph.microsoft.com/v1.0"+path,{headers:{Authorization:"Bearer "+t,Prefer:'outlook.timezone="'+TZ+'"'}});
-  return r.json();
+  const url=/^https?:\/\//i.test(path)?path:"https://graph.microsoft.com/v1.0"+path;
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+t,Prefer:'outlook.timezone="'+TZ+'"'}});
+  const data=await r.json();
+  if(!r.ok||data.error)throw new Error((data.error&&data.error.message)||("HTTP "+r.status));
+  return data;
+}
+async function graphGetAll(path){
+  const items=[];let next=path;
+  while(next){
+    const data=await graph(next);
+    items.push(...(data.value||[]));
+    next=data["@odata.nextLink"]||"";
+  }
+  return items;
+}
+async function loadAccessibleCalendars(){
+  const direct=await graphGetAll("/me/calendars?$select=id,name,owner,isDefaultCalendar&$top=200");
+  let groupCalendars=[];
+  try{
+    const groups=await graphGetAll("/me/calendarGroups?$select=id,name&$top=200");
+    const nested=await Promise.all(groups.map(async g=>{
+      try{return await graphGetAll("/me/calendarGroups/"+encodeURIComponent(g.id)+"/calendars?$select=id,name,owner,isDefaultCalendar&$top=200");}
+      catch{return [];}
+    }));
+    groupCalendars=nested.flat();
+  }catch{
+    groupCalendars=[];
+  }
+  const merged=[];const seen=new Set();
+  [...direct,...groupCalendars].forEach((c,idx)=>{
+    if(!c.id||isNoiseCalendar(c.name||""))return;
+    const key=calendarKey(c);
+    if(seen.has(key))return;
+    seen.add(key);
+    merged.push(normalizeCalendar(c,idx<direct.length?"direct":"group"));
+  });
+  return merged.sort(sortCalendars);
 }
 async function showApp(){
   document.getElementById("cLogin").style.display="none";
@@ -22811,16 +22861,7 @@ async function showApp(){
   document.getElementById("blogout").style.display="block";
   document.getElementById("fDate").value=new Date().toLocaleDateString("en-CA",{timeZone:TZ});
   try{
-    const d=await graph("/me/calendars?$select=id,name,owner&$top=200");
-    if(d.error)throw new Error(d.error.message);
-    calendars=(d.value||[]).filter(c=>c.id && !isNoiseCalendar(c.name||"")).map(c=>{
-      const owner=c.owner||{};
-      const ownerName=owner.name||acct.name||"Sin nombre";
-      const ownerMail=owner.address||"";
-      const calName=c.name||"";
-      const label=calName?ownerName+" · "+calName:ownerName;
-      return {id:c.id,nombre:ownerName,mail:ownerMail,calName,label};
-    });
+    calendars=await loadAccessibleCalendars();
     const g=document.getElementById("ugrid");g.innerHTML="";
     calendars.forEach(c=>{
       const ini=c.nombre.split(" ").map(p=>p[0]||"").join("").substring(0,2).toUpperCase();
@@ -22830,6 +22871,7 @@ async function showApp(){
       dv.onclick=()=>{if(sel.has(c.id)){sel.delete(c.id);dv.classList.remove("sel");}else{sel.add(c.id);dv.classList.add("sel");}document.getElementById("scnt").textContent=sel.size+" calendario(s) seleccionados";};
       g.appendChild(dv);
     });
+    if(!calendars.length)g.innerHTML="<div style='color:var(--muted);font-size:.84rem;padding:16px 0'>No se encontraron calendarios accesibles para esta cuenta.</div>";
     selAll(true);
   }catch(e){const a=document.getElementById("al1");a.textContent="Error: "+e.message;a.classList.add("show");}
 }
@@ -22897,8 +22939,7 @@ async function generar(){
   for(let i=0;i<sl.length;i++){
     const c=sl[i];lg("<span class='dm'>  -> "+c.label+"...</span>");
     try{
-      const d=await graph("/me/calendars/"+c.id+"/calendarView?startDateTime="+ini+"&endDateTime="+fin+"&$select=subject,start,end,location,isAllDay&$top=200&$orderby=start/dateTime");
-      const evs=d.value||[];
+      const evs=await graphGetAll("/me/calendars/"+encodeURIComponent(c.id)+"/calendarView?startDateTime="+encodeURIComponent(ini)+"&endDateTime="+encodeURIComponent(fin)+"&$select=subject,start,end,location,isAllDay&$top=200&$orderby=start/dateTime");
       lg("<span class='ok'>  ok "+c.label+" - "+evs.length+" evento(s)</span>");
       res.push({nombre:c.label,mail:c.mail,eventos:evs,error:false});
     }catch(e){
